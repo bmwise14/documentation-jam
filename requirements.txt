@@ -1,0 +1,9 @@
+openai 
+langchain-openai 
+langchain-core 
+langchain-community 
+langgraph 
+gradio 
+python-dotenv 
+pyodbc 
+grandalf
