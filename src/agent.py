@@ -5,7 +5,7 @@ from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, List, Dict, Any
 import operator
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
 
