@@ -1,5 +1,6 @@
 # OTHER
 data/
+dev/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
