@@ -11,7 +11,6 @@ from langchain_core.tools import BaseTool
 
 import requests
 import os
-# import pyodbc
 from uuid import uuid4
 import ast
 import prompts
@@ -222,13 +221,13 @@ if __name__=="__main__":
 
     prompt = prompts.agent_prompt
     temperature=0.1
-    checkpointer = MemorySaver()
+    # checkpointer = MemorySaver()
     model=ChatOpenAI(model='gpt-4o-mini')
     thread_id = "test"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
-        checkpointer.setup()
+        # checkpointer.setup() # only when the DB is first created
         print(checkpointer)
         agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
         print(agent.graph.get_graph().print_ascii())
