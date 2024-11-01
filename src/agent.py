@@ -19,6 +19,8 @@ import prompts
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+from psycopg import Connection
+import psycopg
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
     # assign ids to messages that don't have them
@@ -206,17 +208,40 @@ class Agent:
         return len(result.tool_calls) > 0
     
 if __name__=="__main__":
+    connection_kwargs = {"autocommit" : True, "prepare_threshold":0}
+    HOST=os.getenv("DB_HOST")
+    PORT=os.getenv("DB_PORT")
+    USER=os.getenv("DB_USER")
+    PASSWORD=os.getenv("DB_PASSWORD")
+    DBNAME=os.getenv("DB_NAME")
+    # DB_URI=f'postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=disable'
+    DB_URI = f'postgresql://{USER}@{HOST}:{PORT}/{DBNAME}?sslmode=disable'
+    print(DB_URI)
+
+
+
     prompt = prompts.agent_prompt
     temperature=0.1
     checkpointer = MemorySaver()
     model=ChatOpenAI(model='gpt-4o-mini')
     thread_id = "test"
+    ##############
+    with Connection.connect(DB_URI, **connection_kwargs) as conn:
+        checkpointer=PostgresSaver(conn)
+        checkpointer.setup()
+        print(checkpointer)
+        agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
+        print(agent.graph.get_graph().print_ascii())
+        agent_input = {"messages" : [HumanMessage(content="Do you know my name?")]}
+        thread_config = {"configurable" : {"thread_id" : thread_id}}
+        result = agent.graph.invoke(agent_input, thread_config)
+        response=result['messages'][-1].content
+        print(response)
 
     ##############
-    agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
-    agent_input = {"messages" : [HumanMessage(content="Hi, my name is Brad")]}
-    thread_config = {"configurable" : {"thread_id" : thread_id}}
-    result = agent.graph.invoke(agent_input, thread_config)
-    print(result['messages'][-1].content)
+    # agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
+    # agent_input = {"messages" : [HumanMessage(content="Hi, my name is Brad")]}
+    # thread_config = {"configurable" : {"thread_id" : thread_id}}
+    # result = agent.graph.invoke(agent_input, thread_config)
+    # print(result['messages'][-1].content)
 
-    # print(agent.graph.get_graph().print_ascii())
