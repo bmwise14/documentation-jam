@@ -1,4 +1,4 @@
-aiofiles==23.2.1ss
+aiofiles==23.2.1
 aiohappyeyeballs==2.4.0
 aiohttp==3.10.5
 aiosignal==1.3.1
