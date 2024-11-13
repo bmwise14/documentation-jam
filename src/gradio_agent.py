@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 import prompts
 from langchain_openai import ChatOpenAI
+# from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
 import psycopg
@@ -26,7 +28,14 @@ DB_URI = f'postgresql://{USER}@{HOST}:{PORT}/{DBNAME}?sslmode=disable'
 print(DB_URI)
 
 model=ChatOpenAI(model='gpt-4o-mini')
+# llm = HuggingFaceEndpoint(
+#     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
+#     task="text-generation",
+#     max_new_tokens=512,
+# )
+# model = ChatHuggingFace(llm=llm, verbose=False)
 print(model)
+
 
 def execute_sql(query: str) -> List[Dict[str, Any]]:
     conn_params = {
