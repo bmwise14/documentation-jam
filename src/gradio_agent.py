@@ -15,6 +15,7 @@ import psycopg
 from agent import Agent
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
 from typing import TypedDict, Annotated, List, Dict, Any
+from tools import AcademicPaperSearchTool
 
 _ = load_dotenv()
 ######################################################
@@ -35,8 +36,10 @@ model=ChatOpenAI(model='gpt-4o-mini')
 # )
 # model = ChatHuggingFace(llm=llm, verbose=False)
 print(model)
+papers_tool = AcademicPaperSearchTool()
+tools = [papers_tool]
 
-
+######################################################
 def execute_sql(query: str) -> List[Dict[str, Any]]:
     conn_params = {
         "host": HOST,
@@ -58,6 +61,7 @@ def execute_sql(query: str) -> List[Dict[str, Any]]:
         conn.close()
 
     return results
+
 ######################################################
 def query_agent(query, chat_history, thread_id=None):
     prompt = prompts.agent_prompt
@@ -67,7 +71,7 @@ def query_agent(query, chat_history, thread_id=None):
         checkpointer=PostgresSaver(conn)
         # checkpointer.setup() # only when the DB is first created
         print(checkpointer)
-        agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
+        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature, system=prompt)
         print(agent.graph.get_graph().print_ascii())
         agent_input = {"messages" : [HumanMessage(content=query)]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}

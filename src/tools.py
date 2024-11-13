@@ -4,7 +4,7 @@ import requests
 import json
 from langchain_core.tools import BaseTool
 
-
+################################################
 class AcademicPaperSearchInput(BaseModel):
     topic: str = Field(..., description="The topic to search for academic papers on")
     max_results: int = Field(5, description="Maximum number of results to return")
@@ -23,7 +23,7 @@ class AcademicPaperSearchTool(BaseTool):
     def _run(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
         # Query an external academic API like arXiv, Semantic Scholar, or CrossRef
         search_results = self.query_academic_api(topic, max_results)
-        print(search_results)
+        # print(search_results)
         return search_results
 
     async def _arun(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
@@ -58,3 +58,4 @@ class AcademicPaperSearchTool(BaseTool):
         else:
             raise ValueError(f"Failed to fetch papers: {response.status_code} - {response.text}")
 
+################################################

@@ -21,7 +21,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from psycopg import Connection
 import psycopg
 
-from tools import AcademicPaperSearchInput, AcademicPaperSearchTool
+from tools import AcademicPaperSearchTool
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
     # assign ids to messages that don't have them
