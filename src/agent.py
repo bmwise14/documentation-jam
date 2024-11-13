@@ -20,6 +20,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from psycopg import Connection
 import psycopg
+
+from tools import AcademicPaperSearchInput, AcademicPaperSearchTool
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
     # assign ids to messages that don't have them
@@ -176,7 +178,9 @@ class Agent:
         Find relevant tool and invoke it, passing in the arguments
         '''
         last_message = state["messages"][-1]
-        if not isinstance(last_message, AnyMessage) or not last_message.tool_calls: # AIMessage
+        # if not isinstance(last_message, AnyMessage) or not last_message.tool_calls: # AIMessage
+        #     return {"messages": state['messages']}
+        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
             return {"messages": state['messages']}
             
         results = []
@@ -217,11 +221,12 @@ if __name__=="__main__":
     DB_URI = f'postgresql://{USER}@{HOST}:{PORT}/{DBNAME}?sslmode=disable'
     print(DB_URI)
 
-
+    papers_tool = AcademicPaperSearchTool()
+    tools = [papers_tool]
+    # checkpointer = MemorySaver()
 
     prompt = prompts.agent_prompt
     temperature=0.1
-    # checkpointer = MemorySaver()
     model=ChatOpenAI(model='gpt-4o-mini')
     thread_id = "test"
     ##############
@@ -229,9 +234,9 @@ if __name__=="__main__":
         checkpointer=PostgresSaver(conn)
         # checkpointer.setup() # only when the DB is first created
         print(checkpointer)
-        agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
+        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature, system=prompt)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="Do you know my name?")]}
+        agent_input = {"messages" : [HumanMessage(content="Search Attention and Transformers articles. Give me details")]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         response=result['messages'][-1].content
