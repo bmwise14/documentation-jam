@@ -30,7 +30,6 @@ class AcademicPaperSearchTool(BaseTool):
         raise NotImplementedError("Async version not implemented")
 
     def query_academic_api(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
-        # Example using Semantic Scholar API (replace with actual endpoint and parameters as needed)
         base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
             "query": topic,
@@ -43,7 +42,6 @@ class AcademicPaperSearchTool(BaseTool):
         
         if response.status_code == 200:
             papers = response.json().get("data", [])
-            # Process and format each paper's details
             formatted_results = [
                 {
                     "title": paper.get("title"),

@@ -223,7 +223,6 @@ if __name__=="__main__":
 
     papers_tool = AcademicPaperSearchTool()
     tools = [papers_tool]
-    # checkpointer = MemorySaver()
 
     prompt = prompts.agent_prompt
     temperature=0.1
@@ -243,6 +242,7 @@ if __name__=="__main__":
         print(response)
 
     ##############
+    # checkpointer = MemorySaver()
     # agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
     # agent_input = {"messages" : [HumanMessage(content="Hi, my name is Brad")]}
     # thread_config = {"configurable" : {"thread_id" : thread_id}}
