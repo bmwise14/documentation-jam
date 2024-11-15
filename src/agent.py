@@ -50,7 +50,6 @@ def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[Any
 #############################################################
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], reduce_messages]
-    summary: str
     last_human_index : int
     title: str
     
@@ -69,11 +68,12 @@ class Agent:
         graph.add_edge("process_input", "llm")
         
         graph.add_node("action", self.take_action)
-        graph.add_conditional_edges(
-            "llm", ## where the node starts
-            self.exists_action, ## function to determine where to go after LLM executes
-            {True: "action", False : END} # map response to the function to next node to go to 
-        )
+        # graph.add_conditional_edges(
+        #     "llm", ## where the node starts
+        #     self.exists_action, ## function to determine where to go after LLM executes
+        #     {True: "action", False : END} # map response to the function to next node to go to 
+        # )
+        graph.add_edge("llm", "action")
         graph.add_edge("action", "paper_analyzer")
         graph.add_edge("paper_analyzer", END)
         
@@ -150,7 +150,7 @@ class Agent:
 
         messages = [SystemMessage(content=prompts.paper_prompt)] + last_messages
 
-        print(messages)
+        # print(messages)
         llmmodel=ChatOpenAI(model='gpt-4o')
         try:
             print("INVOKE PAPER ANALYZER")
@@ -219,7 +219,7 @@ if __name__=="__main__":
 
     prompt = prompts.agent_prompt
     temperature=0.1
-    model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini
+    model=ChatOpenAI(model='gpt-4o') # gpt-4o-mini
     # llm = HuggingFaceEndpoint(
     #     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
     #     task="text-generation",
