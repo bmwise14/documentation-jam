@@ -27,9 +27,9 @@ class AcademicPaperSearchTool(BaseTool):
     def _run(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
         # Query an external academic API like arXiv, Semantic Scholar, or CrossRef
         search_results = self.query_academic_api(topic, max_results)
-        testing = search_results[0]['text'][:100]
+        # testing = search_results[0]['text'][:100]
 
-        return testing
+        return search_results
 
     async def _arun(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
         raise NotImplementedError("Async version not implemented")

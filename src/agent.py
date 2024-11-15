@@ -23,6 +23,8 @@ import prompts
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
 from tools import AcademicPaperSearchTool
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -164,6 +166,7 @@ class Agent:
         relevant_messages = self.get_relevant_messages(state) # get Human/AI history and only all other messages since the last human message
         
         messages = [SystemMessage(content=self.system)] + relevant_messages
+        print("FINAL MESSAGES FOR AGENT:", messages)
         try:
             print("TRY MODEL INVOCATION")
             response = self.model.invoke(messages, temperature=self.temperature)
@@ -176,15 +179,19 @@ class Agent:
             return {"messages" : [response]}
         
     def analyze_paper(self, state: AgentState):
-        last_message = state["messages"][-1]
-        print(last_message)
+        # last_message = state["messages"][-1]
+        # print(last_message)
+        messages = state['messages']
+        last_human_index = state['last_human_index']
+        last_messages = messages[last_human_index:]
 
-        messages = [SystemMessage(content=prompts.paper_prompt)] + [last_message]
+        messages = [SystemMessage(content=prompts.paper_prompt)] + last_messages
 
         print(messages)
+        llmmodel=ChatOpenAI(model='gpt-4o')
         try:
             print("INVOKE PAPER ANALYZER")
-            response = self.model.invoke(messages, temperature=self.temperature)
+            response = llmmodel.invoke(messages, temperature=self.temperature)
             print(response)
             return {"messages" : [response]}
         except Exception as e:
@@ -249,8 +256,14 @@ if __name__=="__main__":
 
     prompt = prompts.agent_prompt
     temperature=0.1
-    model=ChatOpenAI(model='gpt-4o') # gpt-4o-mini
-    thread_id = "test"
+    model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini
+    # llm = HuggingFaceEndpoint(
+    #     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
+    #     task="text-generation",
+    #     max_new_tokens=512,
+    # )
+    # model = ChatHuggingFace(llm=llm, verbose=False)
+    thread_id = "testing"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
