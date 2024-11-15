@@ -22,11 +22,10 @@ import prompts
 
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
-from tools import AcademicPaperSearchTool
+from tools import AcademicPaperSearchTool, PaperDownloaderTool
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langgraph.constants import Send
-
-
+import pymupdf4llm
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -50,35 +49,53 @@ def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[Any
 #############################################################
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], reduce_messages]
+    systematic_review_outline : str
     last_human_index : int
+    papers : List[str]
+    paper : str
+    analyses: Annotated[List[Dict], operator.add]  # Store analysis results
+    combined_analysis: str  # Final combined analysis
     title: str
     
+    
 class Agent:
-    def __init__(self, model, tools, checkpointer, temperature=0.1, system=""):
-        self.system = system
+    def __init__(self, model, tools, checkpointer, temperature=0.1):
         self.temperature=temperature
         self.tools = {t.name: t for t in tools} if tools else {}
         self.model = model.bind_tools(tools) if tools else model
         
         graph = StateGraph(AgentState)
         graph.add_node("process_input", self.process_input)
-        graph.add_node("llm", self.call_openai)
-        graph.add_node("paper_analyzer", self.analyze_paper)
+        graph.add_node("planner", self.plan_node)
+        graph.add_node("researcher", self.research_node)
+        graph.add_node("search_articles", self.take_action)
+        graph.add_node("article_decisions", self.decision_node)
+        graph.add_node("download_articles", self.article_download)
+        graph.add_node("start_analysis", self.analyze_papers_parallel)
+        graph.add_node("paper_analyzer", self.paper_analyzer)
 
-        graph.add_edge("process_input", "llm")
-        
-        graph.add_node("action", self.take_action)
-        # graph.add_conditional_edges(
-        #     "llm", ## where the node starts
-        #     self.exists_action, ## function to determine where to go after LLM executes
-        #     {True: "action", False : END} # map response to the function to next node to go to 
-        # )
-        graph.add_edge("llm", "action")
-        graph.add_edge("action", "paper_analyzer")
+        graph.add_edge("process_input", "planner")
+        graph.add_edge("planner", "researcher")
+        graph.add_edge("researcher", "search_articles")
+        graph.add_edge("search_articles", "article_decisions")
+        graph.add_edge("article_decisions", "download_articles")
+        graph.add_edge("download_articles", 'start_analysis')
+        graph.add_edge("start_analysis", "paper_analyzer")
         graph.add_edge("paper_analyzer", END)
+
+
+        # graph.add_node("llm", self.call_openai)
+        # graph.add_node("paper_analyzer", self.analyze_paper)
+        # graph.add_node("action", self.take_action)
+        
+        # graph.add_edge("process_input", "llm")
+        # graph.add_edge("llm", "action")
+        # graph.add_edge("action", "paper_analyzer")
+        # graph.add_edge("paper_analyzer", END)
         
         graph.set_entry_point("process_input") ## "llm"
         self.graph = graph.compile(checkpointer=checkpointer)
+
 
     def process_input(self, state: AgentState):
         messages = state.get('messages', [])
@@ -89,28 +106,9 @@ class Agent:
             if isinstance(messages[i], HumanMessage):
                 last_human_index = i
                 break
-                
-        # Check if a title already exists
-        if not state.get('title'):
-            # Find the first human message
-            first_human_message = next((msg for msg in messages if isinstance(msg, HumanMessage)), None)
-            
-            if first_human_message:
-                # Create a title based on the first human message
-                title_query = [
-                    SystemMessage(content="Make a short, concise title based on the following query:"),
-                    first_human_message
-                ]
-                title_response = self.model.invoke(title_query, temperature=0.01)
-                title = title_response.content
-            else:
-                title = "New Conversation"
-        else:
-            # If a title already exists, keep it
-            title = state['title']
         
-        return {"last_human_index": last_human_index, "title" : title}
-
+        return {"last_human_index": last_human_index}
+    
     def get_relevant_messages(self, state: AgentState) -> List[AnyMessage]:
         '''
         Don't get tool call messages for AI from history.
@@ -126,43 +124,113 @@ class Agent:
         last_human_index = state['last_human_index']
         return filtered_history[:-1] + messages[last_human_index:]
     
-    def call_openai(self, state: AgentState):
-        '''All nodes and edges will take this in'''
-        relevant_messages = self.get_relevant_messages(state) # get Human/AI history and only all other messages since the last human message
-        
-        messages = [SystemMessage(content=self.system)] + relevant_messages
-        print("FINAL MESSAGES FOR AGENT:", messages)
-        try:
-            print("TRY MODEL INVOCATION")
-            response = self.model.invoke(messages, temperature=self.temperature)
-            print(response)
-            return {"messages" : [response]}
-        except Exception as e:
-            print("CONTEXT TOO BIG")
-            finality_message = [HumanMessage(content="Please Reply: 'I retrieved too much information in my searches and couldn't fit it in my context window. Try again or try tweaking your question to make the search space smaller. I apologize for the inconvenience.'")]
-            response = self.model.invoke(finality_message, temperature=0.01)
-            return {"messages" : [response]}
-        
-    def analyze_paper(self, state: AgentState):
-        messages = state['messages']
-        last_human_index = state['last_human_index']
-        last_messages = messages[last_human_index:]
+    def plan_node(self, state: AgentState):
+        print("PLANNER")
+        relevant_messages = self.get_relevant_messages(state)
+        messages = [SystemMessage(content=prompts.planner_prompt)] + relevant_messages
+        response = self.model.invoke(messages, temperature=self.temperature)
+        print(response)
+        print()
+        return {"systematic_review_outline" : [response]}
+    
+    def research_node(self, state: AgentState):
+        print("RESEARCHER")
+        review_plan = state['systematic_review_outline']
+        messages = [SystemMessage(content=prompts.research_prompt)] + review_plan
+        response = self.model.invoke(messages, temperature=self.temperature)
+        print(response)
+        print()
+        return {"messages" : [response]}
+    
+    def decision_node(self, state: AgentState):
+        print("DECISION-MAKER")
+        review_plan = state['systematic_review_outline']
+        relevant_messages = self.get_relevant_messages(state)
+        messages = [SystemMessage(content=prompts.decision_prompt)] + review_plan + relevant_messages
+        response = self.model.invoke(messages, temperature=self.temperature)
+        print(response)
+        print()
+        return {"messages" : [response]}
 
-        messages = [SystemMessage(content=prompts.paper_prompt)] + last_messages
+    def article_download(self, state: AgentState):
+        print("DOWNLOAD PAPERS")
+        last_message = state["messages"][-1]
 
-        # print(messages)
-        llmmodel=ChatOpenAI(model='gpt-4o')
         try:
-            print("INVOKE PAPER ANALYZER")
-            response = llmmodel.invoke(messages, temperature=self.temperature)
-            print(response)
-            return {"messages" : [response]}
+            # Handle different types of content
+            if isinstance(last_message.content, str):
+                urls = ast.literal_eval(last_message.content)
+            else:
+                urls = last_message.content
+
+            filenames = []
+            for url in urls:
+                try:
+                    response = requests.get(url)
+                    response.raise_for_status()
+                    
+                    # Create a papers directory if it doesn't exist
+                    if not os.path.exists('papers'):
+                        os.makedirs('papers')
+                    
+                    # Generate a filename from the URL
+                    filename = f"papers/{url.split('/')[-1]}"
+                    if not filename.endswith('.pdf'):
+                        filename += '.pdf'
+                    
+                    # Save the PDF
+                    with open(filename, 'wb') as f:
+                        f.write(response.content)
+
+                    filenames.append({"paper" : filename})
+                    print(f"Successfully downloaded: {filename}")
+                    
+                except Exception as e:
+                    print(f"Error downloading {url}: {str(e)}")
+                    continue
+            
+            # Return AIMessage instead of raw strings
+            return {
+                "papers": [
+                    AIMessage(
+                        content=filenames,
+                        response_metadata={'finish_reason': 'stop'}
+                    )
+                ]
+            }
+            
         except Exception as e:
-            print("CONTEXT TOO BIG")
-            finality_message = [HumanMessage(content="Please Reply: 'I retrieved too much information in my searches and couldn't fit it in my context window. Try again or try tweaking your question to make the search space smaller. I apologize for the inconvenience.'")]
-            response = self.model.invoke(finality_message, temperature=0.01)
-            print(response)
-            return {"messages" : [response]}
+            # Return error as AIMessage
+            return {
+                "messages": [
+                    AIMessage(
+                        content=f"Error processing downloads: {str(e)}",
+                        response_metadata={'finish_reason': 'error'}
+                    )
+                ]
+            }
+
+    def analyze_papers_parallel(self, state: AgentState):
+        """Run parallel analysis on papers"""
+        return Send("paper_analyzer",
+            # Create a list of papers to analyze in parallel
+            {"paper": paper for paper in state['papers']},
+            # Each paper will be analyzed independently
+        )
+
+    def paper_analyzer(self, state: AgentState):
+        """Analyze a single paper"""
+        paper = state["paper"]
+        md_text = pymupdf4llm.to_markdown(f"/papers/{paper}")
+        messages = [
+            SystemMessage(content=prompts.analyze_paper_prompt),
+            HumanMessage(content=md_text)
+        ]
+        
+        model = ChatOpenAI(model='gpt-4o')
+        response = model.invoke(messages)
+        
+        return {"analyses": [{"paper": paper, "analysis": response.content}]}
 
     def take_action(self, state: AgentState):
         ''' Get last message from agent state.
@@ -170,9 +238,9 @@ class Agent:
         The tool calls attribute will be attached to message in the Agent State. Can be a list of tool calls.
         Find relevant tool and invoke it, passing in the arguments
         '''
+        print("GET SEARCH RESULTS")
         last_message = state["messages"][-1]
-        # if not isinstance(last_message, AnyMessage) or not last_message.tool_calls: # AIMessage
-        #     return {"messages": state['messages']}
+
         if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
             return {"messages": state['messages']}
             
@@ -192,17 +260,6 @@ class Agent:
 
         return {"messages" : results} # langgraph adding to state in between iterations
     
-    def exists_action(self, state:AgentState):
-        '''
-        takes in result after the LLM is called and return True/False if no tool calls vs calls exist. 
-        Should we take an action or should we not?
-        '''
-        if not self.tools:
-            return False
-        
-        result = state['messages'][-1]
-        return len(result.tool_calls) > 0
-    
 if __name__=="__main__":
     connection_kwargs = {"autocommit" : True, "prepare_threshold":0}
     HOST=os.getenv("DB_HOST")
@@ -215,11 +272,11 @@ if __name__=="__main__":
     print(DB_URI)
 
     papers_tool = AcademicPaperSearchTool()
-    tools = [papers_tool]
+    download_tool = PaperDownloaderTool()
+    tools = [papers_tool, download_tool]
 
-    prompt = prompts.agent_prompt
     temperature=0.1
-    model=ChatOpenAI(model='gpt-4o') # gpt-4o-mini
+    model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini
     # llm = HuggingFaceEndpoint(
     #     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
     #     task="text-generation",
@@ -232,9 +289,9 @@ if __name__=="__main__":
         checkpointer=PostgresSaver(conn)
         # checkpointer.setup() # only when the DB is first created
         print(checkpointer)
-        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature, system=prompt)
+        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="Search 1 Attention and Transformers article. Give me details")]}
+        agent_input = {"messages" : [HumanMessage(content="Diffusion model for music generation")]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         response=result['messages'][-1].content

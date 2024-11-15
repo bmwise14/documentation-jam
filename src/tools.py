@@ -1,17 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Type
 import requests
 import json
 from langchain_core.tools import BaseTool
 
 from bs4 import BeautifulSoup
 import pymupdf4llm
+import sys
+import os
 # https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/index.html
 
 ################################################
 class AcademicPaperSearchInput(BaseModel):
     topic: str = Field(..., description="The topic to search for academic papers on")
-    max_results: int = Field(5, description="Maximum number of results to return")
+    max_results: int = Field(20, description="Maximum number of results to return")
 
 class AcademicPaperSearchTool(BaseTool):
     args_schema: type = AcademicPaperSearchInput  # Explicit type annotation
@@ -38,34 +40,39 @@ class AcademicPaperSearchTool(BaseTool):
         base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
             "query": topic,
-            "limit": 1, # max_results
+            "limit": max_results, # max_results
             "fields": "title,abstract,authors,year,url,openAccessPdf",
             "openAccessPdf" : True
         }
-        while True:
-            try: 
-                response = requests.get(base_url, params=params)
-                print(response)
-                
-                if response.status_code == 200:
-                    papers = response.json().get("data", [])
-                    formatted_results = [
-                        {
-                            "title"     : paper.get("title"),
-                            "abstract"  : paper.get("abstract"),
-                            "authors"   : [author.get("name") for author in paper.get("authors", [])],
-                            "year"      : paper.get("year"),
-                            "url"       : paper.get("url"),
-                            "pdf"       : paper.get("openAccessPdf"),
-                            "text"      : self.get_paper_content(paper['openAccessPdf']['url'])
-                        }
-                        for paper in papers
-                    ]
+        try: 
+            while True:
+                try: 
+                    response = requests.get(base_url, params=params)
+                    print(response)
+                    
+                    if response.status_code == 200:
+                        papers = response.json().get("data", [])
+                        formatted_results = [
+                            {
+                                "title"     : paper.get("title"),
+                                "abstract"  : paper.get("abstract"),
+                                "authors"   : [author.get("name") for author in paper.get("authors", [])],
+                                "year"      : paper.get("year"),
+                                "url"       : paper.get("url"),
+                                "pdf"       : paper.get("openAccessPdf"),
+                                # "text"      : self.get_paper_content(paper['openAccessPdf']['url'])
+                            }
+                            for paper in papers
+                        ]
 
-                    return formatted_results
-            except:
-                # raise ValueError(f"Failed to fetch papers: {response.status_code} - {response.text}")
-                print((f"Failed to fetch papers: {response.status_code} - {response.text}. Trying Again..."))
+                        return formatted_results
+                except:
+                    # raise ValueError(f"Failed to fetch papers: {response.status_code} - {response.text}")
+                    print((f"Failed to fetch papers: {response.status_code} - {response.text}. Trying Again..."))
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user")
+            sys.exit(0)  # Clean exit
+            
     
     def get_paper_content(self, url):
         try:
@@ -104,3 +111,38 @@ class AcademicPaperSearchTool(BaseTool):
         soup = BeautifulSoup(html_content, 'html.parser')
         text = soup.get_text(separator=' ')
         return text
+
+################################################
+class PaperDownloaderInput(BaseModel):
+    url: str = Field(..., description="The URL of the paper to download")
+
+class PaperDownloaderTool(BaseTool):
+    name: str = "paper_downloader"
+    description: str = "Downloads academic papers from pdf URLs"
+    args_schema: Type[BaseModel] = PaperDownloaderInput
+
+    def _run(self, url: str) -> str:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            # Create a papers directory if it doesn't exist
+            if not os.path.exists('papers'):
+                os.makedirs('papers')
+            
+            # Generate a filename from the URL
+            filename = f"papers/{url.split('/')[-1]}"
+            if not filename.endswith('.pdf'):
+                filename += '.pdf'
+            
+            # Save the PDF
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            
+            return filename
+            
+        except Exception as e:
+            return f"Error downloading paper: {str(e)}"
+
+    async def _arun(self, url: str) -> str:
+        raise NotImplementedError("Async version not implemented")
