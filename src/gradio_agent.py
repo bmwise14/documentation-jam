@@ -99,24 +99,6 @@ def get_conversation_history(thread_id):
                 user_message, ai_message = None, None  # Reset for the next pair
 
         return history
-    
-def summary(thread_id):
-    query = f"SELECT DISTINCT(thread_id) FROM checkpoints WHERE thread_id='{thread_id}';"
-    print(query)
-    res = execute_sql(query)
-    print(res)
-    if len(res)==0:
-        return "thread doesn't exist"
-    final_res = []
-    for data in res:
-        config = {"configurable": {"thread_id": data['thread_id']}}
-        with Connection.connect(DB_URI, **connection_kwargs) as conn:
-            checkpoints = PostgresSaver(conn).get(config)
-            if 'summary' in checkpoints['channel_values']:
-                summary = checkpoints['channel_values']['summary']
-                return summary
-            else:
-                return "Error: Unable to fetch summary"
 
 def get_title(thread_id):
     query = f"SELECT DISTINCT(thread_id) FROM checkpoints WHERE thread_id='{thread_id}';"
@@ -159,9 +141,6 @@ with gr.Blocks(title="LangGraph Agent",) as demo:
                 clear_btn = gr.ClearButton([chatbot], value="Clear Chat")
                 load_history_btn = gr.Button("Load Conversation History")
 
-            summary_btn = gr.Button("Get Conversation Summary")
-            summary_output = gr.Textbox(label="Conversation Summary", show_label=True, interactive=False)
-
     # Event handlers
     query_event = msg.submit(query_agent, inputs=[msg, chatbot, thread], outputs=[msg, chatbot])
     thread.change(
@@ -169,7 +148,6 @@ with gr.Blocks(title="LangGraph Agent",) as demo:
         inputs=[thread],
         outputs=[title_output]
     )
-    summary_btn.click(summary, inputs=thread, outputs=summary_output)
     load_history_btn.click(get_conversation_history, inputs=thread, outputs=chatbot)
 
 demo.launch(share=False,server_name="0.0.0.0",server_port=5001, debug=True)

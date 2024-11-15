@@ -12,4 +12,12 @@ You must look through the text provided and get the big ideas from the Abstract,
 Separate your analyses into those 5 sections. Make each section short and concise. 
 
 My readers just want to know at a high level what the paper was about before doing more thorough reading.
+
+Remember to attach the other information to the top: 
+    Title : <title>
+    Year : <year>
+    Authors : <author1, author2, etc.>
+    URL : <pdf url>
+    TLDR Analysis: 
+        <your analysis>
 '''

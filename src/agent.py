@@ -24,6 +24,8 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
 from tools import AcademicPaperSearchTool
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+from langgraph.constants import Send
+
 
 
 #############################################################
@@ -62,24 +64,18 @@ class Agent:
         graph = StateGraph(AgentState)
         graph.add_node("process_input", self.process_input)
         graph.add_node("llm", self.call_openai)
-        graph.add_node("summarize", self.summarize_conversation)
         graph.add_node("paper_analyzer", self.analyze_paper)
 
         graph.add_edge("process_input", "llm")
         
-        if tools:
-            graph.add_node("action", self.take_action)
-            graph.add_conditional_edges(
-              "llm", ## where the node starts
-              self.exists_action, ## function to determine where to go after LLM executes
-              {True: "action", False : "summarize"} # map response to the function to next node to go to 
-            )
-            graph.add_edge("action", "paper_analyzer")
-            graph.add_edge("paper_analyzer", "llm")
-        else:
-            graph.add_edge('llm', 'summarize')
-            
-        graph.add_edge("summarize", END)
+        graph.add_node("action", self.take_action)
+        graph.add_conditional_edges(
+            "llm", ## where the node starts
+            self.exists_action, ## function to determine where to go after LLM executes
+            {True: "action", False : END} # map response to the function to next node to go to 
+        )
+        graph.add_edge("action", "paper_analyzer")
+        graph.add_edge("paper_analyzer", END)
         
         graph.set_entry_point("process_input") ## "llm"
         self.graph = graph.compile(checkpointer=checkpointer)
@@ -129,37 +125,6 @@ class Agent:
                 filtered_history.append(message)
         last_human_index = state['last_human_index']
         return filtered_history[:-1] + messages[last_human_index:]
-        
-    def summarize_conversation(self, state: AgentState):
-        messages = state['messages']
-        existing_summary = state.get("summary", "")
-
-        if existing_summary:
-            summary_prompt = (
-                f"""This is a summary of the content of the conversation to date: {existing_summary}
-                Extend the summary by taking into account any unseen messages above.
-                Prioritize gathering facts of the conversation that you can reference later for long-term memory:"""
-            )
-        else:
-            summary_prompt = (
-                "Create a summary of the content of the conversation above. "
-                "Prioritize gathering facts of the conversation that you can reference later for long-term memory:"
-            )
-
-        summary_messages = messages + [HumanMessage(content=summary_prompt)]
-
-        try:
-            summary_response = self.model.invoke(summary_messages, temperature=0.01)
-        except Exception as e:
-            summary_messages = [HumanMessage(content="Too much context from all the messages before")] + [HumanMessage(content=summary_prompt)]
-            # print(summary_messages)
-            summary_response = self.model.invoke(summary_messages, temperature=0.01)
-        
-        return {
-            "summary": summary_response.content,
-            "messages": [messages[-1]],  # Only keep the last message
-            "last_human_index": 0
-        }
     
     def call_openai(self, state: AgentState):
         '''All nodes and edges will take this in'''
@@ -179,8 +144,6 @@ class Agent:
             return {"messages" : [response]}
         
     def analyze_paper(self, state: AgentState):
-        # last_message = state["messages"][-1]
-        # print(last_message)
         messages = state['messages']
         last_human_index = state['last_human_index']
         last_messages = messages[last_human_index:]
