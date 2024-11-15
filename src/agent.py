@@ -1,27 +1,29 @@
 from dotenv import load_dotenv
 _ = load_dotenv()
 
+import requests
+import ast
+import psycopg
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import operator
+
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, List, Dict, Any
-import operator
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
 
-import requests
 import os
 from uuid import uuid4
-import ast
+
 import prompts
 
 from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 from psycopg import Connection
-import psycopg
-
 from tools import AcademicPaperSearchTool
+
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
     # assign ids to messages that don't have them
@@ -59,6 +61,7 @@ class Agent:
         graph.add_node("process_input", self.process_input)
         graph.add_node("llm", self.call_openai)
         graph.add_node("summarize", self.summarize_conversation)
+        graph.add_node("paper_analyzer", self.analyze_paper)
 
         graph.add_edge("process_input", "llm")
         
@@ -69,7 +72,8 @@ class Agent:
               self.exists_action, ## function to determine where to go after LLM executes
               {True: "action", False : "summarize"} # map response to the function to next node to go to 
             )
-            graph.add_edge("action", "llm") # send action to llm
+            graph.add_edge("action", "paper_analyzer")
+            graph.add_edge("paper_analyzer", "llm")
         else:
             graph.add_edge('llm', 'summarize')
             
@@ -170,6 +174,25 @@ class Agent:
             finality_message = [HumanMessage(content="Please Reply: 'I retrieved too much information in my searches and couldn't fit it in my context window. Try again or try tweaking your question to make the search space smaller. I apologize for the inconvenience.'")]
             response = self.model.invoke(finality_message, temperature=0.01)
             return {"messages" : [response]}
+        
+    def analyze_paper(self, state: AgentState):
+        last_message = state["messages"][-1]
+        print(last_message)
+
+        messages = [SystemMessage(content=prompts.paper_prompt)] + [last_message]
+
+        print(messages)
+        try:
+            print("INVOKE PAPER ANALYZER")
+            response = self.model.invoke(messages, temperature=self.temperature)
+            print(response)
+            return {"messages" : [response]}
+        except Exception as e:
+            print("CONTEXT TOO BIG")
+            finality_message = [HumanMessage(content="Please Reply: 'I retrieved too much information in my searches and couldn't fit it in my context window. Try again or try tweaking your question to make the search space smaller. I apologize for the inconvenience.'")]
+            response = self.model.invoke(finality_message, temperature=0.01)
+            print(response)
+            return {"messages" : [response]}
 
     def take_action(self, state: AgentState):
         ''' Get last message from agent state.
@@ -226,7 +249,7 @@ if __name__=="__main__":
 
     prompt = prompts.agent_prompt
     temperature=0.1
-    model=ChatOpenAI(model='gpt-4o-mini')
+    model=ChatOpenAI(model='gpt-4o') # gpt-4o-mini
     thread_id = "test"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
@@ -235,7 +258,7 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature, system=prompt)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="Search Attention and Transformers articles. Give me details")]}
+        agent_input = {"messages" : [HumanMessage(content="Search 1 Attention and Transformers article. Give me details")]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         response=result['messages'][-1].content
