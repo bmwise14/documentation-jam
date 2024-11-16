@@ -3,17 +3,12 @@ _ = load_dotenv()
 
 import requests
 import ast
-import psycopg
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 import operator
 
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, List, Dict, Any
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
-from langchain_core.tools import BaseTool
 
 import os
 from uuid import uuid4
@@ -22,10 +17,17 @@ import prompts
 
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
-from tools import AcademicPaperSearchTool, PaperDownloaderTool, PaperAnalysisTool
+from tools import AcademicPaperSearchTool
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
-from langgraph.constants import Send
 import pymupdf4llm
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type
+)
+import openai
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -56,6 +58,14 @@ class AgentState(TypedDict):
     analyses: Annotated[List[Dict], operator.add]  # Store analysis results
     combined_analysis: str  # Final combined analysis
     title: str
+
+    abstract : str
+    introduction : str
+    methods : str
+    results : str
+    conclusion : str
+    references : str
+
     
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):
@@ -71,17 +81,39 @@ class Agent:
         graph.add_node("article_decisions", self.decision_node)
         graph.add_node("download_articles", self.article_download)
         graph.add_node("paper_analyzer", self.paper_analyzer)
-        graph.add_node("combine_analyses", self.combine_analyses)
 
+        graph.add_node("write_abstract", self.write_abstract)
+        graph.add_node("write_introduction", self.write_introduction)
+        graph.add_node("write_methods", self.write_methods)
+        graph.add_node("write_results", self.write_results)
+        graph.add_node("write_conclusion", self.write_conclusion)
+        graph.add_node("write_references", self.write_references)
 
+        graph.add_node("aggregate_paper", self.aggregator)
+
+        ####################################
         graph.add_edge("process_input", "planner")
         graph.add_edge("planner", "researcher")
         graph.add_edge("researcher", "search_articles")
         graph.add_edge("search_articles", "article_decisions")
         graph.add_edge("article_decisions", "download_articles")
         graph.add_edge("download_articles", 'paper_analyzer')
-        graph.add_edge("paper_analyzer", "combine_analyses")
-        graph.add_edge("combine_analyses", END)
+
+        graph.add_edge("paper_analyzer", "write_abstract")
+        graph.add_edge("paper_analyzer", "write_introduction")
+        graph.add_edge("paper_analyzer", "write_methods")
+        graph.add_edge("paper_analyzer", "write_results")
+        graph.add_edge("paper_analyzer", "write_conclusion")
+        graph.add_edge("paper_analyzer", "write_references")
+
+        graph.add_edge("write_abstract", "aggregate_paper")
+        graph.add_edge("write_introduction", "aggregate_paper")
+        graph.add_edge("write_methods", "aggregate_paper")
+        graph.add_edge("write_results", "aggregate_paper")
+        graph.add_edge("write_conclusion", "aggregate_paper")
+        graph.add_edge("write_references", "aggregate_paper")
+
+        graph.add_edge("aggregate_paper", END)
         
         graph.set_entry_point("process_input") ## "llm"
         self.graph = graph.compile(checkpointer=checkpointer)
@@ -131,6 +163,34 @@ class Agent:
         print(response)
         print()
         return {"messages" : [response]}
+    
+    def take_action(self, state: AgentState):
+        ''' Get last message from agent state.
+        If we get to this state, the language model wanted to use a tool.
+        The tool calls attribute will be attached to message in the Agent State. Can be a list of tool calls.
+        Find relevant tool and invoke it, passing in the arguments
+        '''
+        print("GET SEARCH RESULTS")
+        last_message = state["messages"][-1]
+
+        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+            return {"messages": state['messages']}
+            
+        results = []
+        for t in last_message.tool_calls:
+            print(f'Calling: {t}')
+
+            if not t['name'] in self.tools: # check for bad tool name
+                print("\n ....bad tool name....")
+                result = "bad tool name, retry" # instruct llm to retry if bad
+            else:
+                # pass in arguments for tool call
+                result = self.tools[t['name']].invoke(t['args'])
+
+            # append result as a tool message
+            results.append(ToolMessage(tool_call_id = t['id'], name=t['name'], content=str(result)))
+
+        return {"messages" : results} # langgraph adding to state in between iterations
     
     def decision_node(self, state: AgentState):
         print("DECISION-MAKER")
@@ -217,46 +277,120 @@ class Agent:
         return {
             "analyses": [analyses]
         }
-    
-    def combine_analyses(self, state: AgentState):
-        print("COMBINER")
+
+    def write_abstract(self, state: AgentState):
+        print("WRITE ABSTRACT")
         review_plan = state['systematic_review_outline']
         analyses = state['analyses']
-        messages = [SystemMessage(content=prompts.combine_prompt)] + review_plan + analyses
-        model = ChatOpenAI(model='gpt-4o')
-        response = model.invoke(messages, temperature=0.1)
+        messages = [SystemMessage(content=prompts.abstract_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
         print(response)
         print()
-        return {"messages" : [response]}
-
-    def take_action(self, state: AgentState):
-        ''' Get last message from agent state.
-        If we get to this state, the language model wanted to use a tool.
-        The tool calls attribute will be attached to message in the Agent State. Can be a list of tool calls.
-        Find relevant tool and invoke it, passing in the arguments
-        '''
-        print("GET SEARCH RESULTS")
-        last_message = state["messages"][-1]
-
-        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
-            return {"messages": state['messages']}
-            
-        results = []
-        for t in last_message.tool_calls:
-            print(f'Calling: {t}')
-
-            if not t['name'] in self.tools: # check for bad tool name
-                print("\n ....bad tool name....")
-                result = "bad tool name, retry" # instruct llm to retry if bad
-            else:
-                # pass in arguments for tool call
-                result = self.tools[t['name']].invoke(t['args'])
-
-            # append result as a tool message
-            results.append(ToolMessage(tool_call_id = t['id'], name=t['name'], content=str(result)))
-
-        return {"messages" : results} # langgraph adding to state in between iterations
+        return {"abstract" : [response]}
     
+    def write_introduction(self, state: AgentState):
+        print("WRITE INTRODUCTION")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.introduction_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
+        print(response)
+        print()
+        return {"introduction" : [response]}
+    
+    def write_methods(self, state: AgentState):
+        print("WRITE METHODS")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.methods_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
+        print(response)
+        print()
+        return {"methods" : [response]}
+    
+    def write_results(self, state: AgentState):
+        print("WRITE RESULTS")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.results_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
+        print(response)
+        print()
+        return {"results" : [response]}
+
+    def write_conclusion(self, state: AgentState):
+        print("WRITE CONCLUSION")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.conclusions_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
+        print(response)
+        print()
+        return {"conclusion" : [response]}
+    
+    def write_references(self, state: AgentState):
+        print("WRITE REFERENCES")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.references_prompt)] + review_plan + analyses
+        model = ChatOpenAI(model='gpt-4o-mini')
+        response = self._make_api_call(model, messages)
+        print(response)
+        print()
+        return {"references" : [response]}
+
+    def aggregator(self, state: AgentState):
+        print("Aggregator")
+        abstract = state['abstract'][-1].content
+        introduction = state['introduction'][-1].content
+        methods = state['methods'][-1].content
+        results = state['results'][-1].content
+        conclusion = state['conclusion'][-1].content
+        references = state['references'][-1].content
+
+        response = abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
+        # response = abstract + "\n\n" + introduction
+        # print("FINAL PAPER")
+        # print(response)
+        # print()
+        # print()
+        # print("#######################")
+
+        response = AIMessage(
+                    content=str(response),
+                    response_metadata={'finish_reason': 'stop'}
+        )
+
+        # response = abstract + introduction + methods + results + conclusion + references
+
+        # review_plan = state['systematic_review_outline']
+        # analyses = state['analyses']
+        # messages = [SystemMessage(content=prompts.combine_prompt)] + review_plan + analyses
+        # model = ChatOpenAI(model='gpt-4o')
+        # response = model.invoke(messages, temperature=0.1)
+        # print(response)
+        # print()
+        return {"messages" : [response]}
+    
+    def _make_api_call(self, model, messages, temperature=0.1):
+        @retry(
+            retry=retry_if_exception_type(openai.RateLimitError),
+            wait=wait_exponential(multiplier=1, min=4, max=60),
+            stop=stop_after_attempt(5)
+        )
+        def _call():
+            try:
+                return model.invoke(messages, temperature=temperature)
+            except openai.RateLimitError as e:
+                print(f"Rate limit reached. Waiting before retry... ({e})")
+                raise
+        return _call()
+
 if __name__=="__main__":
     connection_kwargs = {"autocommit" : True, "prepare_threshold":0}
     HOST=os.getenv("DB_HOST")
@@ -269,8 +403,6 @@ if __name__=="__main__":
     print(DB_URI)
 
     papers_tool = AcademicPaperSearchTool()
-    # download_tool = PaperDownloaderTool()
-    # analysis_tool = PaperAnalysisTool()
     tools = [papers_tool]
 
     temperature=0.1
@@ -289,7 +421,7 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="Diffusion model for music generation")]}
+        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         response=result['messages'][-1].content
