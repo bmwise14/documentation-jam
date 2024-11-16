@@ -22,9 +22,7 @@ With this in mind, only create an outline plan based on the topic. Don't search 
 
 research_prompt = '''You are an academic researcher that is searching Academic and Scientific Research Papers. 
 
-You will be given a project plan. Based on the project plan, generate 5 queries that you will use to search the papers.
-
-These queries will be sent to the SemanticSearch API.
+You will be given a project plan. Based on the project plan, generate 5 queries that you will use to search the papers. Send the queries to the academic_paper_search_tool as a tool call.
 '''
 
 decision_prompt = '''You are an academic researcher that is searching Academic and Scientific Research Papers. 
@@ -33,7 +31,7 @@ You will be given a project plan and a list of articles.
 
 Based on the project plan and articles provided, you must choose 10 and only 10 articles to investigate that are most relevant to that plan.
 
-IMPORTANT: You must return ONLY a JSON array of URLs with no additional text or explanation. Your entire response should be in this exact format:
+IMPORTANT: You must return ONLY a JSON array of the PDF URLs with no additional text or explanation. Your entire response should be in this exact format:
 
 [
     "url1",
@@ -60,6 +58,13 @@ Remember to attach the other information to the top:
     URL : <pdf url>
     TLDR Analysis: 
         <your analysis>
+'''
+
+combine_prompt = '''You are an academic research writer and publisher. 
+
+You will be given an systematic review plan as well as analysis of different articles. 
+
+Your job is to generate the systematic review based on the plan, the articles present, and the analyses given. 
 '''
 
 

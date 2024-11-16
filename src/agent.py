@@ -22,7 +22,7 @@ import prompts
 
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
-from tools import AcademicPaperSearchTool, PaperDownloaderTool
+from tools import AcademicPaperSearchTool, PaperDownloaderTool, PaperAnalysisTool
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langgraph.constants import Send
 import pymupdf4llm
@@ -52,11 +52,10 @@ class AgentState(TypedDict):
     systematic_review_outline : str
     last_human_index : int
     papers : List[str]
-    paper : str
+    paper : Annotated[str, operator.add]
     analyses: Annotated[List[Dict], operator.add]  # Store analysis results
     combined_analysis: str  # Final combined analysis
     title: str
-    
     
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):
@@ -71,27 +70,18 @@ class Agent:
         graph.add_node("search_articles", self.take_action)
         graph.add_node("article_decisions", self.decision_node)
         graph.add_node("download_articles", self.article_download)
-        graph.add_node("start_analysis", self.analyze_papers_parallel)
         graph.add_node("paper_analyzer", self.paper_analyzer)
+        graph.add_node("combine_analyses", self.combine_analyses)
+
 
         graph.add_edge("process_input", "planner")
         graph.add_edge("planner", "researcher")
         graph.add_edge("researcher", "search_articles")
         graph.add_edge("search_articles", "article_decisions")
         graph.add_edge("article_decisions", "download_articles")
-        graph.add_edge("download_articles", 'start_analysis')
-        graph.add_edge("start_analysis", "paper_analyzer")
-        graph.add_edge("paper_analyzer", END)
-
-
-        # graph.add_node("llm", self.call_openai)
-        # graph.add_node("paper_analyzer", self.analyze_paper)
-        # graph.add_node("action", self.take_action)
-        
-        # graph.add_edge("process_input", "llm")
-        # graph.add_edge("llm", "action")
-        # graph.add_edge("action", "paper_analyzer")
-        # graph.add_edge("paper_analyzer", END)
+        graph.add_edge("download_articles", 'paper_analyzer')
+        graph.add_edge("paper_analyzer", "combine_analyses")
+        graph.add_edge("combine_analyses", END)
         
         graph.set_entry_point("process_input") ## "llm"
         self.graph = graph.compile(checkpointer=checkpointer)
@@ -210,27 +200,34 @@ class Agent:
                 ]
             }
 
-    def analyze_papers_parallel(self, state: AgentState):
-        """Run parallel analysis on papers"""
-        return Send("paper_analyzer",
-            # Create a list of papers to analyze in parallel
-            {"paper": paper for paper in state['papers']},
-            # Each paper will be analyzed independently
-        )
-
     def paper_analyzer(self, state: AgentState):
-        """Analyze a single paper"""
-        paper = state["paper"]
-        md_text = pymupdf4llm.to_markdown(f"/papers/{paper}")
-        messages = [
-            SystemMessage(content=prompts.analyze_paper_prompt),
-            HumanMessage(content=md_text)
-        ]
-        
+        print("ANALYZE PAPERS")
+        analyses=""
+        for paper in state['papers'][-1].content:
+            md_text = pymupdf4llm.to_markdown(f"./{paper['paper']}")
+            messages = [
+                SystemMessage(content=prompts.analyze_paper_prompt),
+                HumanMessage(content=md_text)
+            ]
+            
+            model = ChatOpenAI(model='gpt-4o')
+            response = model.invoke(messages, temperature=0.1)
+            print(response)
+            analyses+=response.content
+        return {
+            "analyses": [analyses]
+        }
+    
+    def combine_analyses(self, state: AgentState):
+        print("COMBINER")
+        review_plan = state['systematic_review_outline']
+        analyses = state['analyses']
+        messages = [SystemMessage(content=prompts.combine_prompt)] + review_plan + analyses
         model = ChatOpenAI(model='gpt-4o')
-        response = model.invoke(messages)
-        
-        return {"analyses": [{"paper": paper, "analysis": response.content}]}
+        response = model.invoke(messages, temperature=0.1)
+        print(response)
+        print()
+        return {"messages" : [response]}
 
     def take_action(self, state: AgentState):
         ''' Get last message from agent state.
@@ -272,8 +269,9 @@ if __name__=="__main__":
     print(DB_URI)
 
     papers_tool = AcademicPaperSearchTool()
-    download_tool = PaperDownloaderTool()
-    tools = [papers_tool, download_tool]
+    # download_tool = PaperDownloaderTool()
+    # analysis_tool = PaperAnalysisTool()
+    tools = [papers_tool]
 
     temperature=0.1
     model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini

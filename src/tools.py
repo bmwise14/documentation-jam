@@ -8,7 +8,12 @@ from bs4 import BeautifulSoup
 import pymupdf4llm
 import sys
 import os
-# https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/index.html
+
+from langchain_openai import ChatOpenAI
+import prompts
+from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
+
+
 
 ################################################
 class AcademicPaperSearchInput(BaseModel):
@@ -41,7 +46,7 @@ class AcademicPaperSearchTool(BaseTool):
         params = {
             "query": topic,
             "limit": max_results, # max_results
-            "fields": "title,abstract,authors,year,url,openAccessPdf",
+            "fields": "title,abstract,authors,year,openAccessPdf",
             "openAccessPdf" : True
         }
         try: 
@@ -58,7 +63,6 @@ class AcademicPaperSearchTool(BaseTool):
                                 "abstract"  : paper.get("abstract"),
                                 "authors"   : [author.get("name") for author in paper.get("authors", [])],
                                 "year"      : paper.get("year"),
-                                "url"       : paper.get("url"),
                                 "pdf"       : paper.get("openAccessPdf"),
                                 # "text"      : self.get_paper_content(paper['openAccessPdf']['url'])
                             }
@@ -113,6 +117,50 @@ class AcademicPaperSearchTool(BaseTool):
         return text
 
 ################################################
+class PaperAnalysisInput(BaseModel):
+    paper_path: str = Field(..., description="Path to the paper file to analyze")
+
+class PaperAnalysisTool(BaseTool):
+    args_schema: type = PaperAnalysisInput  # Explicit type annotation
+    name: str = Field("paper_analyzer", description="Tool for searching academic papers")
+    description: str = Field("Analyzes academic papers and provides a structured analysis")
+    
+    def _run(self, paper_path: str) -> Dict:
+        """Analyze a single academic paper"""
+        try:
+            # Convert PDF to markdown
+            md_text = pymupdf4llm.to_markdown(paper_path)
+            print(md_text)
+            
+            # Setup messages for analysis
+            messages = [
+                SystemMessage(content=prompts.analyze_paper_prompt),
+                HumanMessage(content=md_text)
+            ]
+            
+            # Analyze with GPT-4
+            model = ChatOpenAI(model='gpt-4')
+            response = model.invoke(messages, temperature=0.1)
+            
+            return {
+                "paper": paper_path,
+                "analysis": response.content
+            }
+            
+        except Exception as e:
+            return {
+                "paper": paper_path,
+                "error": str(e)
+            }
+
+    async def _arun(self, paper_path: str, prompt: str) -> Dict:
+        """Async version of paper analysis"""
+        raise NotImplementedError("Async analysis not implemented")
+
+
+# state['papers'][-1].content
+
+
 class PaperDownloaderInput(BaseModel):
     url: str = Field(..., description="The URL of the paper to download")
 
