@@ -65,7 +65,6 @@ class AgentState(TypedDict):
     results : str
     conclusion : str
     references : str
-
     
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):

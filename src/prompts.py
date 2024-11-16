@@ -93,10 +93,3 @@ references_prompt = '''You are an academic researcher that is writing a systemat
 You are tasked with writing the References section of the paper based on the systematic outline and the analyses given.
 Construct an APA style references list
 '''
-########################################################
-combine_prompt = '''You are an academic research writer and publisher. 
-
-You will be given an systematic review plan as well as analysis of different articles. 
-
-Your job is to generate the systematic review based on the plan, the articles present, and the analyses given. 
-'''
