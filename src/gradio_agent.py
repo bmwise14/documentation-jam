@@ -64,14 +64,13 @@ def execute_sql(query: str) -> List[Dict[str, Any]]:
 
 ######################################################
 def query_agent(query, chat_history, thread_id=None):
-    prompt = prompts.agent_prompt
     temperature=0.1
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
         # checkpointer.setup() # only when the DB is first created
         print(checkpointer)
-        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature, system=prompt)
+        agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
         agent_input = {"messages" : [HumanMessage(content=query)]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
@@ -100,28 +99,6 @@ def get_conversation_history(thread_id):
 
         return history
 
-def get_title(thread_id):
-    query = f"SELECT DISTINCT(thread_id) FROM checkpoints WHERE thread_id='{thread_id}';"
-    res = execute_sql(query)
-    if len(res)==0:
-        return "thread does not exist"
-    
-    final_res = []
-    for data in res:
-        config = {"configurable": {"thread_id": data['thread_id']}}
-        with Connection.connect(DB_URI, **connection_kwargs) as conn:
-            checkpoints = PostgresSaver(conn).get(config)
-            print(checkpoints)
-            if 'title' in checkpoints['channel_values']:
-                title = checkpoints['channel_values']['title']
-                return title
-            else:
-               return "no title"
-
-def update_thread_info(thread_id):
-    title = get_title(thread_id)
-    return title
-
 with gr.Blocks(title="LangGraph Agent",) as demo:
     with gr.Row():
         gr.Markdown(
@@ -131,8 +108,6 @@ with gr.Blocks(title="LangGraph Agent",) as demo:
     )
     with gr.Row():
         with gr.Column(scale=2):
-            with gr.Row():
-                title_output = gr.Textbox(label="Conversation Title", show_label=True, interactive=False)
             chatbot = gr.Chatbot(label="LangGraph RAG API - Proof of Concept", show_label=False)
             with gr.Row():
                 msg = gr.Textbox(lines=1, show_label=False, placeholder="Enter your query and press ENTER", 
@@ -143,11 +118,6 @@ with gr.Blocks(title="LangGraph Agent",) as demo:
 
     # Event handlers
     query_event = msg.submit(query_agent, inputs=[msg, chatbot, thread], outputs=[msg, chatbot])
-    thread.change(
-        update_thread_info,
-        inputs=[thread],
-        outputs=[title_output]
-    )
     load_history_btn.click(get_conversation_history, inputs=thread, outputs=chatbot)
 
 demo.launch(share=False,server_name="0.0.0.0",server_port=5001, debug=True)
