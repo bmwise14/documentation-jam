@@ -31,7 +31,7 @@ decision_prompt = '''You are an academic researcher that is searching Academic a
 
 You will be given a project plan and a list of articles. 
 
-Based on the project plan and articles provided, you must choose 2 and only 2 articles to investigate that are most relevant to that plan.
+Based on the project plan and articles provided, you must choose a maximum of 3 to investigate that are most relevant to that plan.
 
 IMPORTANT: You must return ONLY a JSON array of the PDF URLs with no additional text or explanation. Your entire response should be in this exact format:
 
@@ -93,3 +93,18 @@ references_prompt = '''You are an academic researcher that is writing a systemat
 You are tasked with writing the References section of the paper based on the systematic outline and the analyses given.
 Construct an APA style references list
 '''
+#########################################################
+critique_draft_prompt = """You are an academic researcher deciding whether or not a systematic review should be published.
+Generate a critique and recommendations for the author's submission or generate a query to get more papers.
+
+If you think just a revision needs to be made, provide detailed recommendations, including requests for length, depth, style.
+If you think the paper is good as is, just end with the draft unchanged.
+"""
+# If you think the write-up needs more papers, generate a search query and ask only for 2 additional articles.
+
+
+revise_draft_prompt = """You are an academic researcher that is revising a systematic review that is about to be published.
+Given the paper below, revise it following the recommendations given. 
+
+Return the revised paper with the implemented recommended changes.
+"""

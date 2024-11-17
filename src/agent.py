@@ -53,18 +53,22 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], reduce_messages]
     systematic_review_outline : str
     last_human_index : int
-    papers : List[str]
-    paper : Annotated[str, operator.add]
+    papers : Annotated[List[str], operator.add] ## papers downloaded
     analyses: Annotated[List[Dict], operator.add]  # Store analysis results
     combined_analysis: str  # Final combined analysis
-    title: str
 
+    title: str
     abstract : str
     introduction : str
     methods : str
     results : str
     conclusion : str
     references : str
+
+    draft : str
+    # critique: str
+    revision_num : int
+    max_revisions : int
     
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):
@@ -89,6 +93,9 @@ class Agent:
         graph.add_node("write_references", self.write_references)
 
         graph.add_node("aggregate_paper", self.aggregator)
+        graph.add_node("critique_paper", self.critique)
+        graph.add_node("revise_paper", self.paper_reviser)
+        graph.add_node("final_draft", self.final_draft)
 
         ####################################
         graph.add_edge("process_input", "planner")
@@ -112,13 +119,25 @@ class Agent:
         graph.add_edge("write_conclusion", "aggregate_paper")
         graph.add_edge("write_references", "aggregate_paper")
 
-        graph.add_edge("aggregate_paper", END)
+        graph.add_edge("aggregate_paper", 'critique_paper')
         
+        graph.add_conditional_edges(
+            "critique_paper", 
+            self.exists_action, 
+            {"final_draft": "final_draft", 
+             "revise": "revise_paper", 
+             True: "search_articles"} 
+        )
+
+        graph.add_edge("revise_paper", "critique_paper")
+        graph.add_edge("final_draft", END)
+
         graph.set_entry_point("process_input") ## "llm"
         self.graph = graph.compile(checkpointer=checkpointer)
 
 
     def process_input(self, state: AgentState):
+        max_revision = 2
         messages = state.get('messages', [])
         # print("MESSAGES")
         # print(messages)
@@ -128,7 +147,7 @@ class Agent:
                 last_human_index = i
                 break
         
-        return {"last_human_index": last_human_index}
+        return {"last_human_index": last_human_index, "max_revisions" : max_revision, "revision_num" : 1}
     
     def get_relevant_messages(self, state: AgentState) -> List[AnyMessage]:
         '''
@@ -344,7 +363,7 @@ class Agent:
         return {"references" : [response]}
 
     def aggregator(self, state: AgentState):
-        print("Aggregator")
+        print("AGGREGATE")
         abstract = state['abstract'][-1].content
         introduction = state['introduction'][-1].content
         methods = state['methods'][-1].content
@@ -352,30 +371,64 @@ class Agent:
         conclusion = state['conclusion'][-1].content
         references = state['references'][-1].content
 
-        response = abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
-        # response = abstract + "\n\n" + introduction
-        # print("FINAL PAPER")
-        # print(response)
-        # print()
-        # print()
-        # print("#######################")
+        draft = abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
 
-        response = AIMessage(
-                    content=str(response),
-                    response_metadata={'finish_reason': 'stop'}
-        )
+        # response = AIMessage(
+        #             content=str(response),
+        #             response_metadata={'finish_reason': 'stop'}
+        # )
 
-        # response = abstract + introduction + methods + results + conclusion + references
-
-        # review_plan = state['systematic_review_outline']
-        # analyses = state['analyses']
-        # messages = [SystemMessage(content=prompts.combine_prompt)] + review_plan + analyses
-        # model = ChatOpenAI(model='gpt-4o')
-        # response = model.invoke(messages, temperature=0.1)
-        # print(response)
-        # print()
-        return {"messages" : [response]}
+        return {"draft" : [draft]}
     
+    def critique(self, state:AgentState):
+        print("CRITIQUE")
+        draft = state["draft"]
+        review_plan = state['systematic_review_outline']
+
+        messages = [SystemMessage(content=prompts.critique_draft_prompt)] + review_plan + draft
+        response = self.model.invoke(messages, temperature=self.temperature)
+        print(response)
+
+        # every critique is a call for revision
+        return {'messages' : [response], "revision_num": state.get("revision_num", 1) + 1}
+
+    def paper_reviser(self, state: AgentState):
+        print("REVISE PAPER")
+        critique = state["messages"][-1].content
+        draft = state["draft"]
+
+        messages = [SystemMessage(content=prompts.revise_draft_prompt)] + [critique] + draft
+        response = self.model.invoke(messages, temperature=self.temperature)
+        print(response)
+
+        return {'draft' : [response]}
+
+    def exists_action(self, state: AgentState):
+        '''
+        Determines whether to continue revising, end, or search for more articles
+        based on the critique and revision count
+        '''
+        print("DECIDING WHETHER TO REVISE, END, or SEARCH AGAIN")    
+        
+        if state["revision_num"] > state["max_revisions"]:
+            return "final_draft"
+        
+        # # Get the latest critique
+        critique = state['messages'][-1]
+        print(critique)
+        
+        # Check if the critique response has any tool calls
+        if hasattr(critique, 'tool_calls') and critique.tool_calls:
+            # The critique suggests we need more research
+            return True
+        else:
+            # No more research needed, proceed with revision
+            return "revise"
+    
+    def final_draft(self, state: AgentState):
+        print("FINAL DRAFT")
+        return {"draft" : state['draft']}
+
     def _make_api_call(self, model, messages, temperature=0.1):
         @retry(
             retry=retry_if_exception_type(openai.RateLimitError),
@@ -412,7 +465,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "testing"
+    thread_id = "test15"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -424,7 +477,9 @@ if __name__=="__main__":
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         response=result['messages'][-1].content
-        print(response)
+        print("FINAL PAPER")
+        paper=result['draft'][-1].content
+        print(paper)
 
     ##############
     # checkpointer = MemorySaver()
