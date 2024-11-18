@@ -57,7 +57,6 @@ class AcademicPaperSearchTool(BaseTool):
                                 "authors"   : [author.get("name") for author in paper.get("authors", [])],
                                 "year"      : paper.get("year"),
                                 "pdf"       : paper.get("openAccessPdf"),
-                                # "text"      : self.get_paper_content(paper['openAccessPdf']['url'])
                             }
                             for paper in papers
                         ]
@@ -69,42 +68,3 @@ class AcademicPaperSearchTool(BaseTool):
         except KeyboardInterrupt:
             print("\nOperation cancelled by user")
             sys.exit(0)  # Clean exit
-            
-    
-    def get_paper_content(self, url):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            # Assuming we can extract text from the response, e.g., from a PDF or HTML
-            return self.extract_text_from_response(response)  # Define or import this helper function as needed
-        except Exception as e:
-            print(f"Failed to retrieve content from {url}: {e}")
-            return None
-    
-    def extract_text_from_response(self, response):
-        # Detect the content type
-        content_type = response.headers.get('Content-Type', '').lower()
-        
-        if 'application/pdf' in content_type:
-            return self.extract_text_from_pdf(response.content)
-        elif 'text/html' in content_type:
-            return self.extract_text_from_html(response.text)
-        elif 'text/plain' in content_type:
-            return response.text
-        else:
-            print(f"Unsupported content type: {content_type}")
-            return None
-
-    def extract_text_from_pdf(self, pdf_content):
-        # Write PDF content to a temporary file to use with pymupdf4llm
-        with open("temp.pdf", "wb") as f:
-            f.write(pdf_content)
-        # Convert PDF to markdown text
-        md_text = pymupdf4llm.to_markdown("temp.pdf")
-        return md_text
-
-    def extract_text_from_html(self, html_content):
-        # Use BeautifulSoup to extract text from HTML
-        soup = BeautifulSoup(html_content, 'html.parser')
-        text = soup.get_text(separator=' ')
-        return text

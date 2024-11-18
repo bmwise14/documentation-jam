@@ -16,6 +16,6 @@ pydantic
 pydantic_core
 tiktoken
 langchain-huggingface
-
+pymupdf4llm
 ipykernel
 pygraphviz
