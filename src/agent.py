@@ -371,12 +371,13 @@ class Agent:
         conclusion = state['conclusion'][-1].content
         references = state['references'][-1].content
 
-        draft = abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
+        messages = [
+                SystemMessage(content="Make a title for this systematic review based on the abstract. Write it in markdown."),
+                HumanMessage(content=abstract)
+            ]
+        title = self.model.invoke(messages, temperature=0.1)
 
-        # response = AIMessage(
-        #             content=str(response),
-        #             response_metadata={'finish_reason': 'stop'}
-        # )
+        draft = title + "\n\n" + abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
 
         return {"draft" : [draft]}
     
@@ -480,12 +481,3 @@ if __name__=="__main__":
         print("FINAL PAPER")
         paper=result['draft'][-1].content
         print(paper)
-
-    ##############
-    # checkpointer = MemorySaver()
-    # agent = Agent(model, [], checkpointer=checkpointer, temperature=temperature, system=prompt)
-    # agent_input = {"messages" : [HumanMessage(content="Hi, my name is Brad")]}
-    # thread_config = {"configurable" : {"thread_id" : thread_id}}
-    # result = agent.graph.invoke(agent_input, thread_config)
-    # print(result['messages'][-1].content)
-
