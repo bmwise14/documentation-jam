@@ -19,3 +19,6 @@ langchain-huggingface
 pymupdf4llm
 ipykernel
 pygraphviz
+
+markdown
+weasyprint

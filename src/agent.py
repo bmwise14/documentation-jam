@@ -29,6 +29,9 @@ from tenacity import (
 )
 import openai
 
+# from langsmith.wrappers import wrap_openai
+# from langsmith import traceable
+
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
     # assign ids to messages that don't have them
@@ -55,7 +58,6 @@ class AgentState(TypedDict):
     last_human_index : int
     papers : Annotated[List[str], operator.add] ## papers downloaded
     analyses: Annotated[List[Dict], operator.add]  # Store analysis results
-    combined_analysis: str  # Final combined analysis
 
     title: str
     abstract : str
@@ -66,10 +68,10 @@ class AgentState(TypedDict):
     references : str
 
     draft : str
-    # critique: str
     revision_num : int
     max_revisions : int
-    
+
+# @traceable  
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):
         self.temperature=temperature
@@ -375,7 +377,7 @@ class Agent:
                 SystemMessage(content="Make a title for this systematic review based on the abstract. Write it in markdown."),
                 HumanMessage(content=abstract)
             ]
-        title = self.model.invoke(messages, temperature=0.1)
+        title = self.model.invoke(messages, temperature=0.1).content
 
         draft = title + "\n\n" + abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
 
@@ -428,6 +430,14 @@ class Agent:
     
     def final_draft(self, state: AgentState):
         print("FINAL DRAFT")
+        import markdown
+        from weasyprint import HTML
+
+        # Convert markdown to HTML
+        html = markdown.markdown(state['draft'][-1].content)
+        # Generate PDF from HTML
+        HTML(string=html).write_pdf("papers/final_draft.pdf")
+                
         return {"draft" : state['draft']}
 
     def _make_api_call(self, model, messages, temperature=0.1):
@@ -466,7 +476,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test15"
+    thread_id = "test17"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -477,7 +487,6 @@ if __name__=="__main__":
         agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")]}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
-        response=result['messages'][-1].content
         print("FINAL PAPER")
         paper=result['draft'][-1].content
         print(paper)
