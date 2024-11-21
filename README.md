@@ -16,39 +16,32 @@ Implement a directed graph workflow that orchestrates systematic review generati
 
 ## Overview of Components
 
-<div style="display: flex; align-items: flex-start; gap: 20px;">
-    <img src="assets/systematic_review_graph.png" alt="Systematic Review Graph" width="500"/>
-    <div>
-        <h3>Initial Stages</h3>
-        <ul>
-            <li><code>_start_</code>: Beginning point of the process</li>
-            <li><code>process_input</code>: Initial data processing stage</li>
-            <li><code>planner</code>: Strategy development phase</li>
-            <li><code>researcher</code>: Research coordination phase</li>
-        </ul>
-        <h3>Article Management</h3>
-        <ul>
-            <li><code>search_articles</code>: Article search and identification</li>
-            <li><code>article_decisions</code>: Evaluation and selection of articles</li>
-            <li><code>download_articles</code>: Retrieval of selected articles</li>
-            <li><code>paper_analyzer</code>: In-depth analysis of papers</li>
-        </ul>
-        <h3>Writing Components</h3>
-        <ul>
-            <li><code>write_abstract</code>: Abstract composition</li>
-            <li><code>write_conclusion</code>: Conclusion development</li>
-            <li><code>write_introduction</code>: Introduction creation</li>
-            <li><code>write_methods</code>: Methodology documentation</li>
-            <li><code>write_references</code>: Reference compilation</li>
-            <li><code>write_results</code>: Results documentation</li>
-        </ul>
-        <h3>Final Stages</h3>
-        <ul>
-            <li><code>aggregate_paper</code>: Combining all sections</li>
-            <li><code>critique_paper</code>: Critical review phase</li>
-            <li><code>revise_paper</code>: Revision process</li>
-            <li><code>final_draft</code>: Final document preparation</li>
-            <li><code>_end_</code>: Process completion</li>
-        </ul>
-    </div>
-</div>
+<img src="assets/systematic_review_graph.png" alt="drawing" width="400" style="display: block; margin-left: auto; margin-right: auto;"/>
+
+1. **Initial Stages**
+- `_start_`: Beginning point of the process
+- `process_input`: Initial data processing stage
+- `planner`: Strategy development phase
+- `researcher`: Research coordination phase
+
+2. **Article Management**
+- `search_articles`: Article search and identification
+- `article_decisions`: Evaluation and selection of articles
+- `download_articles`: Retrieval of selected articles
+- `paper_analyzer`: In-depth analysis of papers
+
+3. **Writing Components**
+- `write_abstract`: Abstract composition
+- `write_conclusion`: Conclusion development
+- `write_introduction`: Introduction creation
+- `write_methods`: Methodology documentation
+- `write_references`: Reference compilation
+- `write_results`: Results documentation
+
+4. **Final Stages**
+- `aggregate_paper`: Combining all sections
+- `critique_paper`: Critical review phase
+- `revise_paper`: Revision process
+- `final_draft`: Final document preparation
+- `_end_`: Process completion
+
