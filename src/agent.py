@@ -28,9 +28,7 @@ from tenacity import (
     retry_if_exception_type
 )
 import openai
-
-# from langsmith.wrappers import wrap_openai
-# from langsmith import traceable
+from langsmith import traceable
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -71,7 +69,7 @@ class AgentState(TypedDict):
     revision_num : int
     max_revisions : int
 
-# @traceable  
+@traceable  
 class Agent:
     def __init__(self, model, tools, checkpointer, temperature=0.1):
         self.temperature=temperature
