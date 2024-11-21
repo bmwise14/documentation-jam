@@ -1,37 +1,16 @@
-# documentation-jam
-- https://en.wikipedia.org/wiki/Meta-analysis
-- Create a meta-analysis/systematic for scientific/academic papers
-- Synthesize academic papers across a wide variety of topics as a meta-review using an Agent that oversees and filters out documents based on topic, material covered.
+**Systematic Review of Scientific Articles**
 
-## What's the Idea?
-Develop a systematic review/meta-analysis application that searches relevant papers based on a topic of choice and compiles a review of those papers.
+{![alt text](data/download.png)}
 
-For a POC, create a TLDR for Academic Articles - grabs highlights from Introduction, Method, Results, Conclusions and compiles a review of those documents in the following ways.
+    #### Overview 
+    An advanced academic paper review system that automates the creation of systematic literature reviews. This solution uses a directed graph architecture to orchestrate a complex workflow, transforming research topics into comprehensive review papers through autonomous planning, research, analysis, and writing stages.
 
-## Tech Stack: 
--> Python
--> LangGraph
--> Postgres - stores graph state
--> Academic Article APIs - Explore Limitations
-
-## Use Case: 
-Use Generative AI to compile papers from a given topic and get a systematic overview of them - finding similarities and dissimilarities in the literature.
+    #### Implementation 
+    • Implement a directed graph workflow that orchestrates systematic review generation through sequential stages of planning, research, paper selection, content analysis, parallel section writing, automated critique, and revision cycles, using GPT-4o for content generation and Semantic Scholar API for paper retrieval.
 
 
 ## What's the Goal?
-The ultimate goal is to be able to gain understanding information from various research domains, through meta-analysis or systematic review. 
-
-
-## How to Run
-
-
-
-
-
-
-
-
-
-
-
+- Use Generative AI to compile papers from a given topic and get a systematic overview of their contents. 
+- Find similarities and dissimilarities in the literature?
+- Be able to gain understanding information from various research domains, through meta-analysis or systematic review. 
 
