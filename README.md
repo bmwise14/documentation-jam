@@ -14,5 +14,5 @@
 
 ## Overview of Components
 
-{![Systematic Review Graph](assest/systematic_review_graph.png)}
+![Systematic Review Graph](assets/systematic_review_graph.png)
 
