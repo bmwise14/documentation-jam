@@ -16,33 +16,5 @@ Implement a directed graph workflow that orchestrates systematic review generati
 
 ## Overview of Components
 
-<!-- ![Systematic Review Graph](assets/systematic_review_graph.png) -->
-<img src="assets/systematic_review_graph.png" alt="drawing" width="500" style="display: block; margin-left: auto; margin-right: auto;"/>
-
-1. **Initial Stages**
-- `_start_`: Beginning point of the process
-- `process_input`: Initial data processing stage
-- `planner`: Strategy development phase
-- `researcher`: Research coordination phase
-
-2. **Article Management**
-- `search_articles`: Article search and identification
-- `article_decisions`: Evaluation and selection of articles
-- `download_articles`: Retrieval of selected articles
-- `paper_analyzer`: In-depth analysis of papers
-
-3. **Writing Components**
-- `write_abstract`: Abstract composition
-- `write_conclusion`: Conclusion development
-- `write_introduction`: Introduction creation
-- `write_methods`: Methodology documentation
-- `write_references`: Reference compilation
-- `write_results`: Results documentation
-
-4. **Final Stages**
-- `aggregate_paper`: Combining all sections
-- `critique_paper`: Critical review phase
-- `revise_paper`: Revision process
-- `final_draft`: Final document preparation
-- `_end_`: Process completion
-
+| ![Systematic Review Graph](assets/systematic_review_graph.png) | **Initial Stages**<br>- `_start_`: Beginning point of the process<br>- `process_input`: Initial data processing stage<br>- `planner`: Strategy development phase<br>- `researcher`: Research coordination phase<br><br>**Article Management**<br>- `search_articles`: Article search and identification<br>- `article_decisions`: Evaluation and selection of articles<br>- `download_articles`: Retrieval of selected articles<br>- `paper_analyzer`: In-depth analysis of papers<br><br>**Writing Components**<br>- `write_abstract`: Abstract composition<br>- `write_conclusion`: Conclusion development<br>- `write_introduction`: Introduction creation<br>- `write_methods`: Methodology documentation<br>- `write_references`: Reference compilation<br>- `write_results`: Results documentation<br><br>**Final Stages**<br>- `aggregate_paper`: Combining all sections<br>- `critique_paper`: Critical review phase<br>- `revise_paper`: Revision process<br>- `final_draft`: Final document preparation<br>- `_end_`: Process completion |
+|---|---|
