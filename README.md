@@ -1,7 +1,5 @@
 **Systematic Review of Scientific Articles**
 
-{![alt text](data/download.png)}
-
     #### Overview 
     An advanced academic paper review system that automates the creation of systematic literature reviews. This solution uses a directed graph architecture to orchestrate a complex workflow, transforming research topics into comprehensive review papers through autonomous planning, research, analysis, and writing stages.
 
@@ -13,4 +11,8 @@
 - Use Generative AI to compile papers from a given topic and get a systematic overview of their contents. 
 - Find similarities and dissimilarities in the literature?
 - Be able to gain understanding information from various research domains, through meta-analysis or systematic review. 
+
+## Overview of Components
+
+{![Systematic Review Graph](assest/download.png)}
 
