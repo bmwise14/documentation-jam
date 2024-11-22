@@ -30,6 +30,8 @@ from tenacity import (
 import openai
 from langgraph.types import Send
 from langsmith import traceable
+import markdown
+from weasyprint import HTML
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -66,8 +68,9 @@ class AgentState(TypedDict):
     conclusion : str
     references : str
 
-    draft : str
+    draft : Annotated[List[str], operator.add]
     revision_num : int
+    num_articles : int
     max_revisions : int
 
 @traceable  
@@ -139,6 +142,7 @@ class Agent:
 
 
     def process_input(self, state: AgentState):
+        num_articles = state.get('num_articles', 2)
         max_revision = 2
         messages = state.get('messages', [])
         # print("MESSAGES")
@@ -149,7 +153,7 @@ class Agent:
                 last_human_index = i
                 break
         
-        return {"last_human_index": last_human_index, "max_revisions" : max_revision, "revision_num" : 1}
+        return {"last_human_index": last_human_index, "max_revisions" : max_revision, "revision_num" : 1, 'num_articles' : num_articles}
     
     def get_relevant_messages(self, state: AgentState) -> List[AnyMessage]:
         '''
@@ -216,7 +220,7 @@ class Agent:
         print("DECISION-MAKER")
         review_plan = state['systematic_review_outline']
         relevant_messages = self.get_relevant_messages(state)
-        messages = [SystemMessage(content=prompts.decision_prompt.format(n=2))] + review_plan + relevant_messages
+        messages = [SystemMessage(content=prompts.decision_prompt.format(n=state["num_articles"]))] + review_plan + relevant_messages
         response = self.model.invoke(messages, temperature=self.temperature)
         print(response)
         print()
@@ -405,14 +409,19 @@ class Agent:
 
         draft = title + "\n\n" + abstract + "\n\n" + introduction + "\n\n" + methods + "\n\n" + results + "\n\n" + conclusion + "\n\n" + references
 
-        return {"draft" : [draft]}
+        first_draft = AIMessage(
+                    content=draft,
+                    response_metadata={'finish_reason': 'error'}
+                    )
+
+        return {"draft" : [first_draft]}
     
     def critique(self, state:AgentState):
         print("CRITIQUE")
-        draft = state["draft"]
+        draft = state["draft"][-1].content
         review_plan = state['systematic_review_outline']
 
-        messages = [SystemMessage(content=prompts.critique_draft_prompt)] + review_plan + draft
+        messages = [SystemMessage(content=prompts.critique_draft_prompt)] + review_plan + [draft]
         response = self.model.invoke(messages, temperature=self.temperature)
         print(response)
 
@@ -422,9 +431,9 @@ class Agent:
     def paper_reviser(self, state: AgentState):
         print("REVISE PAPER")
         critique = state["messages"][-1].content
-        draft = state["draft"]
+        draft = state["draft"][-1].content
 
-        messages = [SystemMessage(content=prompts.revise_draft_prompt)] + [critique] + draft
+        messages = [SystemMessage(content=prompts.revise_draft_prompt)] + [critique] + [draft]
         response = self.model.invoke(messages, temperature=self.temperature)
         print(response)
 
@@ -454,8 +463,6 @@ class Agent:
     
     def final_draft(self, state: AgentState):
         print("FINAL DRAFT")
-        import markdown
-        from weasyprint import HTML
 
         # Convert markdown to HTML
         html = markdown.markdown(state['draft'][-1].content)
@@ -500,7 +507,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test20"
+    thread_id = "test21"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -508,7 +515,7 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")]}
+        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 3}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         print("FINAL PAPER")
