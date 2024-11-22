@@ -61,7 +61,7 @@ def process_paper(paper_path, prompt):
             SystemMessage(content=prompt),
             HumanMessage(content=md_text)
         ]
-        model = ChatOpenAI(model='gpt-4o')
+        model = ChatOpenAI(model='gpt-4o-mini') # mini for paper analysis
         return model.invoke(messages, temperature=0.1)
     except Exception as e:
         return AIMessage(
@@ -538,7 +538,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test23"
+    thread_id = "test24"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -546,7 +546,7 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 3}
+        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 12}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         print("FINAL PAPER")
