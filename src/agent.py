@@ -32,6 +32,8 @@ from langgraph.types import Send
 from langsmith import traceable
 import markdown
 from weasyprint import HTML
+from multiprocessing import Pool
+from functools import partial
 
 #############################################################
 def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[AnyMessage]:
@@ -51,6 +53,21 @@ def reduce_messages(left: list[AnyMessage], right: list[AnyMessage]) -> list[Any
             # append any new messages to the end
             merged.append(message)
     return merged
+
+def process_paper(paper_path, prompt):
+    try:
+        md_text = pymupdf4llm.to_markdown(paper_path)
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=md_text)
+        ]
+        model = ChatOpenAI(model='gpt-4o')
+        return model.invoke(messages, temperature=0.1)
+    except Exception as e:
+        return AIMessage(
+            content=f"Error processing download: {str(e)}",
+            response_metadata={'finish_reason': 'error'}
+        )
 
 #############################################################
 class AgentState(TypedDict):
@@ -107,8 +124,8 @@ class Agent:
         graph.add_edge("researcher", "search_articles")
         graph.add_edge("search_articles", "article_decisions")
         graph.add_edge("article_decisions", "download_articles")
-        # graph.add_edge("download_articles", 'paper_analyzer')
-        graph.add_conditional_edges("download_articles", self.send_articles)
+        graph.add_edge("download_articles", 'paper_analyzer')
+        # graph.add_conditional_edges("download_articles", self.send_articles)
 
         graph.add_edge("paper_analyzer", "write_abstract")
         graph.add_edge("paper_analyzer", "write_introduction")
@@ -285,31 +302,45 @@ class Agent:
                 ]
             }
 
-    def send_articles(self, state: AgentState):
-        print("SEND ARTICLES FILENAMES")
-        print(state['papers'])
-        return [Send("paper_analyzer", {"paper" : p}) for p in state['papers']]
+    # def send_articles(self, state: AgentState):
+    #     print("SEND ARTICLES FILENAMES")
+    #     print(state['papers'])
+    #     return [Send("paper_analyzer", {"paper" : p}) for p in state['papers']]
     
     def paper_analyzer(self, state: AgentState):
         print("ANALYZE PAPER")
-        paper = state['paper']
-        print(paper)
-        try:
-            md_text = pymupdf4llm.to_markdown(f"./{paper}")
-            messages = [
-                    SystemMessage(content=prompts.analyze_paper_prompt),
-                    HumanMessage(content=md_text)
-                ]
-            model = ChatOpenAI(model='gpt-4o')
-            response = model.invoke(messages, temperature=0.1)
-        except Exception as e:
-            response = AIMessage(
-                    content=f"Error processing download: {str(e)}",
-                    response_metadata={'finish_reason': 'error'}
-                    )
+        papers = state['papers']
+        paper_paths = [f"./{p}" for p in papers]
+        analyze_func = partial(process_paper, prompt=prompts.analyze_paper_prompt)
+        with Pool() as pool:
+            analyses = pool.map(analyze_func, paper_paths)
 
-        return {"analyses" : [response]}
+        print("ANALYSES")
+        print(analyses)
+    
+        return {"analyses": analyses}
 
+
+        ## with SEND API, but pymupdf4llm does not support threading
+        # paper = state['paper']
+        # print(paper)
+        # try:
+        #     md_text = pymupdf4llm.to_markdown(f"./{paper}")
+        #     messages = [
+        #             SystemMessage(content=prompts.analyze_paper_prompt),
+        #             HumanMessage(content=md_text)
+        #         ]
+        #     model = ChatOpenAI(model='gpt-4o')
+        #     response = model.invoke(messages, temperature=0.1)
+        # except Exception as e:
+        #     response = AIMessage(
+        #             content=f"Error processing download: {str(e)}",
+        #             response_metadata={'finish_reason': 'error'}
+        #             )
+
+        # return {"analyses" : [response]}
+
+        ## SEQUENTIAL
         # analyses=""
         # for paper in state['papers'][-1].content:
         #     md_text = pymupdf4llm.to_markdown(f"./{paper['paper']}")
@@ -507,7 +538,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test21"
+    thread_id = "test23"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
