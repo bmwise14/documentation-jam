@@ -31,7 +31,7 @@ decision_prompt = '''You are an academic researcher that is searching Academic a
 
 You will be given a project plan and a list of articles. 
 
-Based on the project plan and articles provided, you must choose a maximum of 10 to investigate that are most relevant to that plan.
+Based on the project plan and articles provided, you must choose a maximum of {n} to investigate that are most relevant to that plan.
 
 IMPORTANT: You must return ONLY a JSON array of the PDF URLs with no additional text or explanation. Your entire response should be in this exact format:
 

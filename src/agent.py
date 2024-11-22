@@ -28,6 +28,7 @@ from tenacity import (
     retry_if_exception_type
 )
 import openai
+from langgraph.types import Send
 from langsmith import traceable
 
 #############################################################
@@ -54,7 +55,7 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], reduce_messages]
     systematic_review_outline : str
     last_human_index : int
-    papers : Annotated[List[str], operator.add] ## papers downloaded
+    papers : List[str] # Annotated[List[str], operator.add] ## papers downloaded - should I make this a static List[str]?
     analyses: Annotated[List[Dict], operator.add]  # Store analysis results
 
     title: str
@@ -103,7 +104,8 @@ class Agent:
         graph.add_edge("researcher", "search_articles")
         graph.add_edge("search_articles", "article_decisions")
         graph.add_edge("article_decisions", "download_articles")
-        graph.add_edge("download_articles", 'paper_analyzer')
+        # graph.add_edge("download_articles", 'paper_analyzer')
+        graph.add_conditional_edges("download_articles", self.send_articles)
 
         graph.add_edge("paper_analyzer", "write_abstract")
         graph.add_edge("paper_analyzer", "write_introduction")
@@ -214,7 +216,7 @@ class Agent:
         print("DECISION-MAKER")
         review_plan = state['systematic_review_outline']
         relevant_messages = self.get_relevant_messages(state)
-        messages = [SystemMessage(content=prompts.decision_prompt)] + review_plan + relevant_messages
+        messages = [SystemMessage(content=prompts.decision_prompt.format(n=2))] + review_plan + relevant_messages
         response = self.model.invoke(messages, temperature=self.temperature)
         print(response)
         print()
@@ -250,7 +252,7 @@ class Agent:
                     with open(filename, 'wb') as f:
                         f.write(response.content)
 
-                    filenames.append({"paper" : filename})
+                    filenames.append(filename)
                     print(f"Successfully downloaded: {filename}")
                     
                 except Exception as e:
@@ -258,13 +260,14 @@ class Agent:
                     continue
             
             # Return AIMessage instead of raw strings
+            # [
+            #         AIMessage(
+            #             content=filenames,
+            #             response_metadata={'finish_reason': 'stop'}
+            #         )
+            #     ]
             return {
-                "papers": [
-                    AIMessage(
-                        content=filenames,
-                        response_metadata={'finish_reason': 'stop'}
-                    )
-                ]
+                "papers": filenames
             }
             
         except Exception as e:
@@ -278,23 +281,46 @@ class Agent:
                 ]
             }
 
+    def send_articles(self, state: AgentState):
+        print("SEND ARTICLES FILENAMES")
+        print(state['papers'])
+        return [Send("paper_analyzer", {"paper" : p}) for p in state['papers']]
+    
     def paper_analyzer(self, state: AgentState):
-        print("ANALYZE PAPERS")
-        analyses=""
-        for paper in state['papers'][-1].content:
-            md_text = pymupdf4llm.to_markdown(f"./{paper['paper']}")
+        print("ANALYZE PAPER")
+        paper = state['paper']
+        print(paper)
+        try:
+            md_text = pymupdf4llm.to_markdown(f"./{paper}")
             messages = [
-                SystemMessage(content=prompts.analyze_paper_prompt),
-                HumanMessage(content=md_text)
-            ]
-            
+                    SystemMessage(content=prompts.analyze_paper_prompt),
+                    HumanMessage(content=md_text)
+                ]
             model = ChatOpenAI(model='gpt-4o')
             response = model.invoke(messages, temperature=0.1)
-            print(response)
-            analyses+=response.content
-        return {
-            "analyses": [analyses]
-        }
+        except Exception as e:
+            response = AIMessage(
+                    content=f"Error processing download: {str(e)}",
+                    response_metadata={'finish_reason': 'error'}
+                    )
+
+        return {"analyses" : [response]}
+
+        # analyses=""
+        # for paper in state['papers'][-1].content:
+        #     md_text = pymupdf4llm.to_markdown(f"./{paper['paper']}")
+        #     messages = [
+        #         SystemMessage(content=prompts.analyze_paper_prompt),
+        #         HumanMessage(content=md_text)
+        #     ]
+            
+        #     model = ChatOpenAI(model='gpt-4o')
+        #     response = model.invoke(messages, temperature=0.1)
+        #     print(response)
+        #     analyses+=response.content
+        # return {
+        #     "analyses": [analyses]
+        # }
 
     def write_abstract(self, state: AgentState):
         print("WRITE ABSTRACT")
@@ -474,7 +500,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test17"
+    thread_id = "test20"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
