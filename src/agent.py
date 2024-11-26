@@ -261,11 +261,11 @@ class Agent:
                     response.raise_for_status()
                     
                     # Create a papers directory if it doesn't exist
-                    if not os.path.exists('papers'):
-                        os.makedirs('papers')
+                    if not os.path.exists(f'papers/{thread_id}'):
+                        os.makedirs(f'papers/{thread_id}')
                     
                     # Generate a filename from the URL
-                    filename = f"papers/{url.split('/')[-1]}"
+                    filename = f"papers/{thread_id}/{url.split('/')[-1]}"
                     if not filename.endswith('.pdf'):
                         filename += '.pdf'
                     
@@ -280,13 +280,6 @@ class Agent:
                     print(f"Error downloading {url}: {str(e)}")
                     continue
             
-            # Return AIMessage instead of raw strings
-            # [
-            #         AIMessage(
-            #             content=filenames,
-            #             response_metadata={'finish_reason': 'stop'}
-            #         )
-            #     ]
             return {
                 "papers": filenames
             }
@@ -301,61 +294,39 @@ class Agent:
                     )
                 ]
             }
+    
+    # def paper_analyzer(self, state: AgentState):
+    #     print("ANALYZE PAPER")
+    #     papers = state['papers']
+    #     paper_paths = [f"./{p}" for p in papers]
+    #     analyze_func = partial(process_paper, prompt=prompts.analyze_paper_prompt)
+    #     with Pool() as pool:
+    #         analyses = pool.map(analyze_func, paper_paths)
 
-    # def send_articles(self, state: AgentState):
-    #     print("SEND ARTICLES FILENAMES")
-    #     print(state['papers'])
-    #     return [Send("paper_analyzer", {"paper" : p}) for p in state['papers']]
+    #     print("ANALYSES")
+    #     print(analyses)
+    
+    #     return {"analyses": analyses}
     
     def paper_analyzer(self, state: AgentState):
-        print("ANALYZE PAPER")
+        print("ANALYZE PAPERS")
+        analyses=""
         papers = state['papers']
-        paper_paths = [f"./{p}" for p in papers]
-        analyze_func = partial(process_paper, prompt=prompts.analyze_paper_prompt)
-        with Pool() as pool:
-            analyses = pool.map(analyze_func, paper_paths)
+        print(papers)
+        for paper in papers:
+            md_text = pymupdf4llm.to_markdown(f"./{paper}")
+            messages = [
+                SystemMessage(content=prompts.analyze_paper_prompt),
+                HumanMessage(content=md_text)
+            ]
 
-        print("ANALYSES")
-        print(analyses)
-    
-        return {"analyses": analyses}
-
-
-        ## with SEND API, but pymupdf4llm does not support threading
-        # paper = state['paper']
-        # print(paper)
-        # try:
-        #     md_text = pymupdf4llm.to_markdown(f"./{paper}")
-        #     messages = [
-        #             SystemMessage(content=prompts.analyze_paper_prompt),
-        #             HumanMessage(content=md_text)
-        #         ]
-        #     model = ChatOpenAI(model='gpt-4o')
-        #     response = model.invoke(messages, temperature=0.1)
-        # except Exception as e:
-        #     response = AIMessage(
-        #             content=f"Error processing download: {str(e)}",
-        #             response_metadata={'finish_reason': 'error'}
-        #             )
-
-        # return {"analyses" : [response]}
-
-        ## SEQUENTIAL
-        # analyses=""
-        # for paper in state['papers'][-1].content:
-        #     md_text = pymupdf4llm.to_markdown(f"./{paper['paper']}")
-        #     messages = [
-        #         SystemMessage(content=prompts.analyze_paper_prompt),
-        #         HumanMessage(content=md_text)
-        #     ]
-            
-        #     model = ChatOpenAI(model='gpt-4o')
-        #     response = model.invoke(messages, temperature=0.1)
-        #     print(response)
-        #     analyses+=response.content
-        # return {
-        #     "analyses": [analyses]
-        # }
+            model = ChatOpenAI(model='gpt-4o')
+            response = model.invoke(messages, temperature=0.1)
+            print(response)
+            analyses+=response.content
+        return {
+            "analyses": [analyses]
+        }
 
     def write_abstract(self, state: AgentState):
         print("WRITE ABSTRACT")
@@ -498,7 +469,7 @@ class Agent:
         # Convert markdown to HTML
         html = markdown.markdown(state['draft'][-1].content)
         # Generate PDF from HTML
-        HTML(string=html).write_pdf("papers/final_draft.pdf")
+        HTML(string=html).write_pdf(f"papers/{thread_id}/final_draft.pdf")
                 
         return {"draft" : state['draft']}
 
@@ -538,7 +509,7 @@ if __name__=="__main__":
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test24"
+    thread_id = "test25"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -546,7 +517,7 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 12}
+        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 8}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         print("FINAL PAPER")
