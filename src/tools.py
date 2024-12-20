@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import pymupdf4llm
 import sys
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
+import os
 
 ################################################
 class AcademicPaperSearchInput(BaseModel):
@@ -36,6 +37,11 @@ class AcademicPaperSearchTool(BaseTool):
 
     def query_academic_api(self, topic: str, max_results: int) -> List[Dict[str, Any]]:
         base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+        headers = {
+            "x-api-key": os.getenv("SEMANTIC_SEARCH_KEY")
+        }
+
         params = {
             "query": topic,
             "limit": max_results, # max_results
@@ -45,7 +51,7 @@ class AcademicPaperSearchTool(BaseTool):
         try: 
             while True:
                 try: 
-                    response = requests.get(base_url, params=params)
+                    response = requests.get(base_url, params=params, headers=headers)
                     print(response)
                     
                     if response.status_code == 200:
