@@ -12,8 +12,11 @@ References: Lists the references used in the review.
 A very important component of a systematic review include:
 Interpreting results: Involves considering factors such as limitations, strength of evidence, biases, and implications for future practice or research. 
 
-With this in mind, only create an outline plan based on the topic. Don't search anything, just set up the planning.
+
+You will be given a topic. Don't infer anything. Just take the topic and write an outline plan based on it. That's it. Don't do anything else. Don't search anything.
 '''
+# With this in mind, only create an outline plan based on the topic. Don't search anything, just set up the planning.
+
 # Scoping: A "trial run" of the review that helps shape the review's method and protocol. 
 # Meta-analysis: An optional component that uses statistical methods to combine and summarize the results of multiple studies. 
 # Data extraction: A central component where data is collected and organized for analysis. 

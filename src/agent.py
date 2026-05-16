@@ -8,7 +8,7 @@ import operator
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, List, Dict, Any
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage, ChatMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
 
 import os
 from uuid import uuid4
@@ -155,7 +155,7 @@ class Agent:
         graph.add_edge("final_draft", END)
 
         graph.set_entry_point("process_input") ## "llm"
-        self.graph = graph.compile(checkpointer=checkpointer)
+        self.graph = graph.compile(checkpointer=checkpointer) #interrupt_after=["article_decisions"]
 
 
     def process_input(self, state: AgentState):
@@ -502,14 +502,23 @@ if __name__=="__main__":
     tools = [papers_tool]
 
     temperature=0.1
-    model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini
+    # model=ChatOpenAI(model='gpt-4o-mini') # gpt-4o-mini
+
+    model = AzureChatOpenAI(
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version="2024-08-01-preview",
+        verbose=True
+    )
+
     # llm = HuggingFaceEndpoint(
     #     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
     #     task="text-generation",
     #     max_new_tokens=512,
     # )
     # model = ChatHuggingFace(llm=llm, verbose=False)
-    thread_id = "test25"
+    thread_id = "deepseek_r1"
     ##############
     with Connection.connect(DB_URI, **connection_kwargs) as conn:
         checkpointer=PostgresSaver(conn)
@@ -517,9 +526,9 @@ if __name__=="__main__":
         print(checkpointer)
         agent = Agent(model, tools, checkpointer=checkpointer, temperature=temperature)
         print(agent.graph.get_graph().print_ascii())
-        agent_input = {"messages" : [HumanMessage(content="diffusion models for music generation")], "num_articles" : 8}
+        agent_input = {"messages" : [HumanMessage(content="deepseek r1 vs openai gpt-4o")], "num_articles" : 3}
         thread_config = {"configurable" : {"thread_id" : thread_id}}
         result = agent.graph.invoke(agent_input, thread_config)
         print("FINAL PAPER")
-        paper=result['draft'][-1].content
-        print(paper)
+        # paper=result['draft'][-1].content
+        # print(paper)
